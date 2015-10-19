@@ -19,7 +19,7 @@ Based on the great [pure theme](http://github.com/sindresorhus/pure) by [@sindre
 * User and host always shown in RPROMPT, green for standard users, red if privileged.
 * Command execution time shows in ms if less than one second has elapsed.
   ![Time](screenshots/time.png)
-* Temporary messages can be displayed in the pre-prompt, e.g. to show feedback after an asynchronous command has completed.
+* Temporary messages can be displayed in the pre-prompt, e.g. to show feedback after an asynchronous command has completed. Just echo the text you want to display to `${ZDOTDIR:-$HOME}/.promptmsg.tmp`. The message is automagically cleared once shown.
   ![Message](screenshots/message.png)
 
 ## Install
