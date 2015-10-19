@@ -20,6 +20,7 @@ Based on the great [pure theme](http://github.com/sindresorhus/pure) by [@sindre
 * Command execution time shows in ms if less than one second has elapsed.
   ![Time](screenshots/time.png)
 * Temporary messages can be displayed in the pre-prompt, e.g. to show feedback after an asynchronous command has completed.
+  ![Message](screenshots/message.png)
 
 ## Install
 
