@@ -111,14 +111,6 @@ To have commands colorized as seen in the screenshot install [zsh-syntax-highlig
 
 Set `zstyle ':prezto:module:prompt' theme 'filthy'` in `~/.zpreztorc`.
 
-### [antigen](https://github.com/zsh-users/antigen)
-
-Update your `.zshrc` file with the following two lines (order matters). Do not use the `antigen theme` function.
-
-```
-antigen bundle molovo/filthy
-```
-
 ## License
 
 MIT © [James Dinsdale](https://molovo.co)
