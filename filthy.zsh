@@ -59,9 +59,6 @@ prompt_filthy_precmd() {
   # shows the full path in the title
   print -Pn '\e]0;%~\a'
 
-  # git info
-  git-info
-
   # Echo current path
   local prompt_filthy_preprompt="\n%F{blue}%~%f"
 
@@ -154,17 +151,6 @@ prompt_filthy_setup() {
 
   add-zsh-hook precmd prompt_filthy_precmd
   add-zsh-hook preexec prompt_filthy_preexec
-
-  # # Set git-info parameters.
-  # zstyle ':prezto:module:git:info' verbose 'yes'
-  # zstyle ':prezto:module:git:ignore' submodule 'all'
-  # #zstyle ':prezto:module:git:info:branch' format '%F{242}%b%f'
-  # #zstyle ':prezto:module:git:info:action' format '%F{242}|%f%F{red}%a%f'
-  # zstyle ':prezto:module:git:info:clean' format '%F{green}✔%f'
-  # zstyle ':prezto:module:git:info:dirty' format '%F{red}✗%f'
-  # zstyle ':prezto:module:git:info:keys' format \
-  #   'prompt' '' \
-  #   'rprompt' '%C%D'
 
   # Define prompts.
 
