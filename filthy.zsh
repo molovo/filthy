@@ -69,7 +69,7 @@ prompt_filthy_precmd() {
   # Echo command exec time
   prompt_filthy_preprompt+=" %F{yellow}$(prompt_filthy_cmd_exec_time)%f"
   
-  if [[ if "${ZDOTDIR:-$HOME}/.promptmsg" ]]; then
+  if [[ -f "${ZDOTDIR:-$HOME}/.promptmsg" ]]; then
     # Echo any stored messages after the pre-prompt
     prompt_filthy_preprompt+=" $(cat ${ZDOTDIR:-$HOME}/.promptmsg)"
   fi
