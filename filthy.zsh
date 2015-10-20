@@ -68,12 +68,14 @@ prompt_filthy_precmd() {
 
   # Echo command exec time
   prompt_filthy_preprompt+=" %F{yellow}$(prompt_filthy_cmd_exec_time)%f"
-
-  # Echo any stored messages after the pre-prompt
-  prompt_filthy_preprompt+=" $(cat ${ZDOTDIR:-$HOME}/.promptmsg.tmp)"
+  
+  if [[ if "${ZDOTDIR:-$HOME}/.promptmsg" ]]; then
+    # Echo any stored messages after the pre-prompt
+    prompt_filthy_preprompt+=" $(cat ${ZDOTDIR:-$HOME}/.promptmsg)"
+  fi
 
   # We've already added any messages to our prompt, so let's reset them
-  cat /dev/null >! "${ZDOTDIR:-$HOME}/.promptmsg.tmp"
+  cat /dev/null >! "${ZDOTDIR:-$HOME}/.promptmsg"
 
   print -P $prompt_filthy_preprompt
 
