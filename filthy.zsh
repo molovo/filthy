@@ -68,7 +68,7 @@ prompt_filthy_precmd() {
 
   # Echo command exec time
   prompt_filthy_preprompt+=" %F{yellow}$(prompt_filthy_cmd_exec_time)%f"
-  
+
   if [[ -f "${ZDOTDIR:-$HOME}/.promptmsg" ]]; then
     # Echo any stored messages after the pre-prompt
     prompt_filthy_preprompt+=" $(cat ${ZDOTDIR:-$HOME}/.promptmsg)"
@@ -129,10 +129,16 @@ prompt_filthy_git_branch() {
 
   # check if HEAD is detached
   if [[ "$branch" = "HEAD" ]]; then
-    rtn="%F{242}detached@%f"
-    rtn+="%F{yellow}"
-    rtn+=$(git status HEAD -uno --ignore-submodules=all | head -1 | awk '{print $4}' 2>/dev/null)
-    rtn+="%f"
+    commit=$(git status HEAD -uno --ignore-submodules=all | head -1 | awk '{print $4}' 2>/dev/null)
+
+    if [[ "$commit" = "on" ]]; then
+      rtn="%F{yellow}no branch%f"
+    else
+      rtn="%F{242}detached@%f"
+      rtn+="%F{yellow}"
+      rtn+="$commit"
+      rtn+="%f"
+    fi
   else
     rtn="%F{242}$branch%f"
   fi
