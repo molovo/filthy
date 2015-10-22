@@ -24,7 +24,9 @@ Based on the great [pure theme](http://github.com/sindresorhus/pure) by [@sindre
 
 ## Install
 
-Can be installed with `npm` or manually. Requires git 2.0.0+ and ZSH 4.3.17+.
+Can be installed with `npm` or manually. Requires git 1.7.10+ and ZSH 4.3.17+.
+
+(To show current tag/commit when head is detached, git 2.0.0+ is required. Otherwise it just shows 'no branch')
 
 ### npm
 
