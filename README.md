@@ -24,7 +24,7 @@ Based on the great [pure theme](http://github.com/sindresorhus/pure) by [@sindre
 
 ## Install
 
-Can be installed with `npm` or manually. Requires git 2.0.0+ and ZSH 5.0.0+.
+Can be installed with `npm` or manually. Requires git 2.0.0+ and ZSH 4.3.17+.
 
 ### npm
 
