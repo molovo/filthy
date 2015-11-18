@@ -29,8 +29,8 @@ prompt_filthy_human_time() {
   (( $days > 0 )) && print -n "${days}d "
   (( $hours > 0 )) && print -n "${hours}h "
   (( $minutes > 0 )) && print -n "${minutes}m "
-  (( $seconds > 0 )) && print -n "${seconds}s"
-  (( $seconds < 1 )) && print -n "${1}ms"
+  (( $seconds > 5 )) && print -n "${seconds}s"
+  (( $seconds <= 5 )) && print -n "${1}ms"
 }
 
 # displays the exec time of the last command if set threshold was exceeded
@@ -38,7 +38,7 @@ prompt_filthy_cmd_exec_time() {
   local stop=$((EPOCHREALTIME*1000))
   local start=${cmd_timestamp:-$stop}
   integer elapsed=$stop-$start
-  (($elapsed > ${FILTHY_CMD_MAX_EXEC_TIME:=5000})) && prompt_filthy_human_time $elapsed
+  (($elapsed > ${FILTHY_CMD_MAX_EXEC_TIME:=500})) && prompt_filthy_human_time $elapsed
 }
 
 prompt_filthy_preexec() {
@@ -46,7 +46,7 @@ prompt_filthy_preexec() {
 
   # shows the current dir and executed command in the title when a process is active
   print -Pn "\e]0;"
-  print -nE "$PWD:t: $2"
+  echo -nE "$PWD:t: $2"
   print -Pn "\a"
 }
 
