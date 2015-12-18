@@ -30,7 +30,7 @@ prompt_filthy_human_time() {
   (( $hours > 0 )) && print -n "${hours}h "
   (( $minutes > 0 )) && print -n "${minutes}m "
   (( $seconds > 5 )) && print -n "${seconds}s"
-  (( $seconds <= 5 )) && print -n "${1}ms"
+  (( $tmp <= 5 )) && print -n "${1}ms"
 }
 
 # displays the exec time of the last command if set threshold was exceeded
