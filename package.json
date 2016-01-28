@@ -13,7 +13,7 @@
     "node": ">=0.10.0"
   },
   "scripts": {
-    "postinstall": "dest=/usr/local/share/zsh/site-functions/; mkdir -p $dest && ln -sf \"$PWD/filthy.zsh\" $dest/prompt_filthy_setup || echo 'Could not automagically symlink the prompt. Check out the readme on how to do it manually: https://github.com/molovo/filthy#manually'"
+    "postinstall": "dest=/usr/local/share/zsh/site-functions; mkdir -p $dest && ln -sf \"$PWD/filthy.zsh\" $dest/prompt_filthy_setup || echo 'Could not automagically symlink the prompt. Check out the readme on how to do it manually: https://github.com/molovo/filthy#manually'"
   },
   "files": [
     "filthy.zsh"
