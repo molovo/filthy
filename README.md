@@ -82,6 +82,11 @@ prompt filthy
 
 The max execution time of a process before its run time is shown when it exits. Defaults to `5` seconds.
 
+### `FILTHY_SHOW_EXIT_CODE`
+
+Prints a nice exit code in front of the prompt character when the previous
+command exited with a status not equal to `0`
+
 ## Example
 
 ```sh
