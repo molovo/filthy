@@ -210,7 +210,7 @@ prompt_filthy_setup() {
   RPROMPT='%(!.%F{red}%n%f%F{242}.%F{green}%n%f%F{242})@%m%f'
 
   # prompt turns red if the previous command didn't exit with 0
-  PROMPT='%(?.%F{green}.%F{red}$(prompt_filthy_nice_exit_code))❯%f'
+  PROMPT='%(?.%F{green}.%F{red}$(prompt_filthy_nice_exit_code))❯%f '
 }
 
 prompt_filthy_setup "$@"
