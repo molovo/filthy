@@ -110,7 +110,7 @@ prompt_filthy_precmd() {
 	if command git rev-parse --is-inside-work-tree &>/dev/null; then
     # Print the name of the repository
     git_root=$(git rev-parse --show-toplevel)
-    prompt_filthy_preprompt+="%F{yellow}$(basename ${git_root})%f"
+    prompt_filthy_preprompt+="%B%F{yellow}$(basename ${git_root})%b%f"
 
     # Print the current_path relative to the git root
     current_path=$(git rev-parse --show-prefix)
