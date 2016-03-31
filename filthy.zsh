@@ -1,3 +1,5 @@
+#!/usr/bin/env zsh
+
 # Filthy
 # by James Dinsdale
 # https://github.com/molovo/filthy
@@ -99,15 +101,32 @@ prompt_filthy_string_length() {
 }
 
 prompt_filthy_precmd() {
-  # shows the full path in the title
-  print -Pn '\e]0;%~\a'
+  local prompt_filthy_preprompt git_root current_path branch repo_status
 
-  # Echo current path
-  local prompt_filthy_preprompt="\n%F{blue}%~%f"
+  # Ensure prompt starts on a new line
+  prompt_filthy_preprompt="\n"
 
 	# check if we're in a git repo, and show git info if we are
-	command git rev-parse --is-inside-work-tree &>/dev/null && \
-  prompt_filthy_preprompt+=" %F{242}(%f$(prompt_filthy_git_branch)$(prompt_filthy_git_repo_status)%s%F{242})%f"
+	if command git rev-parse --is-inside-work-tree &>/dev/null; then
+    # Print the name of the repository
+    git_root=$(git rev-parse --show-toplevel)
+    prompt_filthy_preprompt+="%F{yellow}$(basename ${git_root})%f"
+
+    # Print the current_path relative to the git root
+    current_path=$(git rev-parse --show-prefix)
+    prompt_filthy_preprompt+=" %F{blue}${current_path%/}%f"
+
+    # Print the repository status
+    branch=$(prompt_filthy_git_branch)
+    repo_status=$(prompt_filthy_git_repo_status)
+    prompt_filthy_preprompt+=" ${branch}${repo_status}%s"
+  else
+    # We're not in a repository, so just print the current path
+    prompt_filthy_preprompt+="%F{blue}%~%f"
+  fi
+
+  # Print everything so far in the title
+  # print -Pn '\e]0;${prompt_filthy_preprompt}\a'
 
   # Echo command exec time
   prompt_filthy_preprompt+=" %F{yellow}$(prompt_filthy_cmd_exec_time)%f"
