@@ -114,12 +114,12 @@ prompt_filthy_precmd() {
 
     # Print the current_path relative to the git root
     current_path=$(git rev-parse --show-prefix)
-    prompt_filthy_preprompt+=" %F{blue}${current_path%/}%f"
+    prompt_filthy_preprompt+=" %F{blue}${${current_path%/}:-"/"}%f"
 
     # Print the repository status
     branch=$(prompt_filthy_git_branch)
     repo_status=$(prompt_filthy_git_repo_status)
-    prompt_filthy_preprompt+=" ${branch}${repo_status}%s"
+    prompt_filthy_preprompt+=" %F{242}(%f${branch}${repo_status}%s%F{242})%f"
   else
     # We're not in a repository, so just print the current path
     prompt_filthy_preprompt+="%F{blue}%~%f"
@@ -183,14 +183,25 @@ prompt_filthy_git_repo_status() {
 
 prompt_filthy_git_branch() {
   # get the current git status
-  local branch=$(git status --short --branch -uno --ignore-submodules=all | head -1 | awk '{print $2}' 2>/dev/null)
-  local rtn
+  local branch git_dir_local rtn
+
+  branch=$(git status --short --branch -uno --ignore-submodules=all | head -1 | awk '{print $2}' 2>/dev/null)
+  git_dir_local=$(git rev-parse --git-dir)
 
   # remove reference to any remote tracking branch
   branch=${branch%...*}
 
   # check if HEAD is detached
-  if [[ "$branch" = "HEAD" ]]; then
+  if [[ -d "${git_dir_local}/rebase-merge" ]]; then
+    branch=$(git status | head -5 | tail -1 | awk '{print $6}')
+    rtn="%F{red}rebasing interactively%f%F{242} → ${branch//([[:space:]]|\')/}%f"
+  elif [[ -d "${git_dir_local}/rebase-apply" ]]; then
+    branch=$(git status | head -2 | tail -1 | awk '{print $6}')
+    rtn="%F{red}rebasing%f%F{242} → ${branch//([[:space:]]|\')/}%f"
+  elif [[ -f "${git_dir_local}/MERGE_HEAD" ]]; then
+    branch=$(git status | head -1 | awk '{print $3}')
+    rtn="%F{red}merging%f%F{242} → ${branch//([[:space:]]|\')/}%f"
+  elif [[ "$branch" = "HEAD" ]]; then
     commit=$(git status HEAD -uno --ignore-submodules=all | head -1 | awk '{print $4}' 2>/dev/null)
 
     if [[ "$commit" = "on" ]]; then
@@ -205,7 +216,7 @@ prompt_filthy_git_branch() {
     rtn="%F{242}$branch%f"
   fi
 
-  print $rtn
+  print "$rtn"
 }
 
 prompt_filthy_setup() {
