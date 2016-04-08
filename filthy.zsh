@@ -115,11 +115,6 @@ prompt_filthy_precmd() {
     # Print the current_path relative to the git root
     current_path=$(git rev-parse --show-prefix)
     prompt_filthy_preprompt+=" %F{blue}${${current_path%/}:-"/"}%f"
-
-    # Print the repository status
-    branch=$(prompt_filthy_git_branch)
-    repo_status=$(prompt_filthy_git_repo_status)
-    prompt_filthy_preprompt+=" %F{242}(%f${branch}${repo_status}%s%F{242})%f"
   else
     # We're not in a repository, so just print the current path
     prompt_filthy_preprompt+="%F{blue}%~%f"
@@ -143,6 +138,16 @@ prompt_filthy_precmd() {
 
   # reset value since `preexec` isn't always triggered
   unset cmd_timestamp
+}
+
+prompt_filthy_rprompt() {
+	# check if we're in a git repo, and show git info if we are
+	if command git rev-parse --is-inside-work-tree &>/dev/null; then
+		# Print the repository status
+		branch=$(prompt_filthy_git_branch)
+		repo_status=$(prompt_filthy_git_repo_status)
+		print "${repo_status} ${branch}"
+	fi
 }
 
 prompt_filthy_git_repo_status() {
@@ -237,7 +242,8 @@ prompt_filthy_setup() {
 
   # show username@host if logged in through SSH
   # username turns red if user is privileged
-  RPROMPT='%(!.%F{red}%n%f%F{242}.%F{green}%n%f%F{242})@%m%f'
+  # RPROMPT='%(!.%F{red}%n%f%F{242}.%F{green}%n%f%F{242})@%m%f'
+  RPROMPT='$(prompt_filthy_rprompt)'
 
   # prompt turns red if the previous command didn't exit with 0
   PROMPT='%(?.%F{green}.%F{red}$(prompt_filthy_nice_exit_code))❯%f '
