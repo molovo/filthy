@@ -224,6 +224,13 @@ prompt_filthy_git_branch() {
   print "$rtn"
 }
 
+prompt_filthy_connection_info() {
+  # show username@host if logged in through SSH
+  if [[ "x$SSH_CONNECTION" != "x" ]]; then
+    echo '%(!.%F{red}%n%f.%F{242}%n%f)%F{242}@%f%F{green}%m%f '
+  fi
+}
+
 prompt_filthy_setup() {
   # prevent percentage showing up
   # if output doesn't end with a newline
@@ -240,13 +247,12 @@ prompt_filthy_setup() {
 
   # Define prompts.
 
-  # show username@host if logged in through SSH
   # username turns red if user is privileged
   # RPROMPT='%(!.%F{red}%n%f%F{242}.%F{green}%n%f%F{242})@%m%f'
   RPROMPT='$(prompt_filthy_rprompt)'
 
   # prompt turns red if the previous command didn't exit with 0
-  PROMPT='%(?.%F{green}.%F{red}$(prompt_filthy_nice_exit_code))❯%f '
+  PROMPT='$(prompt_filthy_connection_info)%(?.%F{green}.%F{red}$(prompt_filthy_nice_exit_code))❯%f '
 }
 
 prompt_filthy_setup "$@"
