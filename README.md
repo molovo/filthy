@@ -31,10 +31,17 @@ Can be installed with `npm` or manually. Requires git 1.7.10+ and ZSH 4.3.17+.
 ### npm
 
 ```
-$ npm install --global filthy-prompt
+npm install --global filthy-prompt
 ```
 
 That's it. Skip to [Getting started](#getting-started).
+
+### [Zulu](http://github.com/zulu-zsh/zulu)
+
+```
+zulu install filthy
+zulu theme filthy
+```
 
 ### Manually
 
