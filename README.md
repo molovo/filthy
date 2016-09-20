@@ -9,18 +9,14 @@
 
 Based on the great [pure theme](http://github.com/sindresorhus/pure) by [@sindresorhus](http://github.com/sindresorhus) and [@mafredri](https://github.com/mafredri), but with a few notable changes.
 
-* Prompt character is now green when previous command was successful.
-* Git repo info is wrapped in parentheses for clearer separation.
-* Calls to git-info/vcs-info plugins replaced with native git commands.
+* Prompt character is green when previous command was successful, red when not.
+* Git repo info shown in RPROMPT.
+* Path is shown relative to `git-root` when in a repository.
 * Current commit/tag shown if HEAD is detached.
-  ![Detached](screenshots/detached.png)
 * 'Initial' status is shown in a new repo
-  ![Initial](screenshots/initial.png)
 * User and host always shown in RPROMPT, green for standard users, red if privileged.
 * Command execution time shows in ms if less than one second has elapsed.
-  ![Time](screenshots/time.png)
 * Temporary messages can be displayed in the pre-prompt, e.g. to show feedback after an asynchronous command has completed. Just echo the text you want to display to `${ZDOTDIR:-$HOME}/.promptmsg`. The message is automagically cleared once shown.
-  ![Message](screenshots/message.png)
 
 ## Install
 
