@@ -228,6 +228,8 @@ prompt_filthy_connection_info() {
   # show username@host if logged in through SSH
   if [[ "x$SSH_CONNECTION" != "x" ]]; then
     echo '%(!.%F{red}%n%f.%F{242}%n%f)%F{242}@%f%F{green}%m%f '
+  else
+    echo '%(!.%F{red}%n%f%F{242}@%f%F{green}%m%f .)'
   fi
 }
 
@@ -247,8 +249,6 @@ prompt_filthy_setup() {
 
   # Define prompts.
 
-  # username turns red if user is privileged
-  # RPROMPT='%(!.%F{red}%n%f%F{242}.%F{green}%n%f%F{242})@%m%f'
   RPROMPT='$(prompt_filthy_rprompt)'
 
   # prompt turns red if the previous command didn't exit with 0
