@@ -154,6 +154,8 @@ prompt_filthy_rprompt() {
 prompt_filthy_ci_status() {
   local state
 
+  [[ $FILTHY_SHOW_CI_STATUS -eq 0 ]] && return
+
   if command type hub >/dev/null 2>&1; then
     state=$(hub ci-status 2>&1)
     case $state in
