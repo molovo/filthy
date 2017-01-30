@@ -146,8 +146,39 @@ prompt_filthy_rprompt() {
 		# Print the repository status
 		branch=$(prompt_filthy_git_branch)
 		repo_status=$(prompt_filthy_git_repo_status)
-		print "${repo_status} ${branch}"
+    ci_status=$(prompt_filthy_ci_status)
+		print "${branch}${repo_status}${ci_status}"
 	fi
+}
+
+prompt_filthy_ci_status() {
+  local state
+
+  [[ $FILTHY_SHOW_CI_STATUS -eq 0 ]] && return
+
+  if command type hub >/dev/null 2>&1; then
+    state=$(hub ci-status 2>&1)
+    case $state in
+      success )
+        print ' %F{green}●%f'
+        ;;
+      pending )
+        print ' %F{yellow}○%f'
+        ;;
+      failure )
+        print ' %F{red}●%f'
+        ;;
+      error )
+        print ' %F{red}‼%f'
+        ;;
+      'no status' )
+        print ' %F{242}○%f'
+        ;;
+    esac
+  fi
+
+  print $cached_ci_state
+  ci_state_last_update_time=$((EPOCHREALTIME*1000))
 }
 
 prompt_filthy_git_repo_status() {
@@ -161,7 +192,10 @@ prompt_filthy_git_repo_status() {
   local down
 
   dirty="$(git diff --ignore-submodules=all HEAD 2>/dev/null)"
-  [[ $dirty != "" ]] && rtn+=" %F{red}x%f"
+  [[ $dirty != "" ]] && rtn+=" %F{242}…%f"
+
+  staged="$(git diff --staged HEAD 2>/dev/null)"
+  [[ $staged != "" ]] && rtn+=" %F{242}*%f"
 
   # check if there is an upstream configured for this branch
   # exit if there isn't, as we can't check for remote changes
@@ -227,9 +261,9 @@ prompt_filthy_git_branch() {
 prompt_filthy_connection_info() {
   # show username@host if logged in through SSH
   if [[ "x$SSH_CONNECTION" != "x" ]]; then
-    echo '%(!.%F{red}%n%f.%F{242}%n%f)%F{242}@%f%F{green}%m%f '
+    echo '%(!.%B%F{red}%n%f%b.%F{242}%n%f)%F{242}@%m%f '
   else
-    echo '%(!.%F{red}%n%f%F{242}@%f%F{green}%m%f .)'
+    echo '%(!.%B%F{red}%n%f%b%F{242}@%m%f .)'
   fi
 }
 
@@ -247,12 +281,9 @@ prompt_filthy_setup() {
   add-zsh-hook precmd prompt_filthy_precmd
   add-zsh-hook preexec prompt_filthy_preexec
 
-  # Define prompts.
-
-  RPROMPT='$(prompt_filthy_rprompt)'
-
   # prompt turns red if the previous command didn't exit with 0
   PROMPT='$(prompt_filthy_connection_info)%(?.%F{green}.%F{red}$(prompt_filthy_nice_exit_code))❯%f '
+  RPROMPT='$(prompt_filthy_rprompt)'
 }
 
 prompt_filthy_setup "$@"
