@@ -21,7 +21,7 @@
 # %(?..) => prompt conditional - %(condition.true.false)
 
 prompt_filthy_nice_exit_code() {
-	local exit_status="${1:-$(print -P %?)}";
+  local exit_status="${1:-$(print -P %?)}";
 	# nothing to do here
 	[[ ${FILTHY_SHOW_EXIT_CODE:=0} != 1 || -z $exit_status || $exit_status == 0 ]] && return;
 
@@ -105,6 +105,9 @@ prompt_filthy_precmd() {
 
   # Ensure prompt starts on a new line
   prompt_filthy_preprompt="\n"
+
+  # Print connection info
+  prompt_filthy_preprompt+="$(prompt_filthy_connection_info)"
 
 	# check if we're in a git repo, and show git info if we are
 	if command git rev-parse --is-inside-work-tree &>/dev/null; then
@@ -282,7 +285,8 @@ prompt_filthy_setup() {
   add-zsh-hook preexec prompt_filthy_preexec
 
   # prompt turns red if the previous command didn't exit with 0
-  PROMPT='$(prompt_filthy_connection_info)%(?.%F{green}.%F{red}$(prompt_filthy_nice_exit_code))❯%f '
+  PROMPT='%(?.%F{green}.%F{red}$(prompt_filthy_nice_exit_code))❯%f '
+
   RPROMPT='$(prompt_filthy_rprompt)'
 }
 
