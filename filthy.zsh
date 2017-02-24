@@ -160,33 +160,46 @@ prompt_filthy_rprompt() {
 }
 
 prompt_filthy_ci_status() {
-  local state
+  local state git_dir_local state_file
 
   [[ $FILTHY_SHOW_CI_STATUS -eq 0 ]] && return
 
-  if builtin type hub >/dev/null 2>&1; then
+  builtin type hub >/dev/null 2>&1 || return
+
+  git_dir_local="$(git rev-parse --git-dir)"
+  state_file="${git_dir_local}/ci-status"
+
+  function _retrieve_ci_status() {
+    # Delay the asynchronous process, otherwise the status file
+    # will be empty when we read it
+    sleep 1
+
     state=$(hub ci-status 2>&1)
+    cat /dev/null >! "${state_file}" 2>/dev/null
     case $state in
       success )
-        print ' %F{green}●%f'
+        print '%F{green}●%f' >> "${state_file}"
         ;;
       pending )
-        print ' %F{yellow}○%f'
+        print '%F{yellow}○%f' >> "${state_file}"
         ;;
       failure )
-        print ' %F{red}●%f'
+        print '%F{red}●%f' >> "${state_file}"
         ;;
       error )
-        print ' %F{red}‼%f'
+        print '%F{red}‼%f' >> "${state_file}"
         ;;
       'no status' )
-        print ' %F{242}○%f'
+        print '%F{242}○%f' >> "${state_file}"
         ;;
     esac
-  fi
+  }
 
-  print $cached_ci_state
-  ci_state_last_update_time=$((EPOCHREALTIME*1000))
+  _retrieve_ci_status >/dev/null 2>&1 &!
+
+  state=$(cat "${state_file}" 2>/dev/null)
+
+  [[ -n $state ]] && print " $state"
 }
 
 prompt_filthy_git_repo_status() {
