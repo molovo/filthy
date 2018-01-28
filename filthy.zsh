@@ -152,11 +152,7 @@ prompt_filthy_rprompt() {
     ci_status=$(prompt_filthy_ci_status)
 	fi
 
-  if builtin type zvm >/dev/null 2>&1; then
-    zvm_version=" $(zvm current --quiet)"
-  fi
-
-  print "${branch}${repo_status}${ci_status}%F{yellow}${zvm_version}%f"
+  print "${branch}${repo_status}${ci_status}%F{yellow} ${ZSH_VERSION}%f"
 }
 
 prompt_filthy_ci_status() {
