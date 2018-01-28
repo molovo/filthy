@@ -29,12 +29,12 @@ prompt_filthy_nice_exit_code() {
 
 	# is this a signal name (error code = signal + 128) ?
 	case $exit_status in
-		129)  sig_name=HUP ;;
-		130)  sig_name=INT ;;
+		129)  sig_name=HUP  ;;
+		130)  sig_name=INT  ;;
 		131)  sig_name=QUIT ;;
-		132)  sig_name=ILL ;;
+		132)  sig_name=ILL  ;;
 		134)  sig_name=ABRT ;;
-		136)  sig_name=FPE ;;
+		136)  sig_name=FPE  ;;
 		137)  sig_name=KILL ;;
 		139)  sig_name=SEGV ;;
 		141)  sig_name=PIPE ;;
@@ -43,11 +43,11 @@ prompt_filthy_nice_exit_code() {
 
 	# usual exit codes
 	case $exit_status in
-		-1)   sig_name=FATAL ;;
-		1)    sig_name=WARN ;; # Miscellaneous errors, such as "divide by zero"
+		-1)   sig_name=FATAL         ;;
+		1)    sig_name=WARN          ;; # Miscellaneous errors, such as "divide by zero"
 		2)    sig_name=BUILTINMISUSE ;; # misuse of shell builtins (pretty rare)
 		126)  sig_name=CCANNOTINVOKE ;; # cannot invoke requested command (ex : source script_with_syntax_error)
-		127)  sig_name=CNOTFOUND ;; # command not found (ex : source script_not_existing)
+		127)  sig_name=CNOTFOUND     ;; # command not found (ex : source script_not_existing)
 	esac
 
 	# assuming we are on an x86 system here
@@ -71,23 +71,23 @@ prompt_filthy_human_time() {
   local hours=$(( tmp / 60 / 60 % 24 ))
   local minutes=$(( tmp / 60 % 60 ))
   local seconds=$(( tmp % 60 ))
-  (( $days > 0 )) && print -n "${days}d "
-  (( $hours > 0 )) && print -n "${hours}h "
+  (( $days > 0 ))    && print -n "${days}d "
+  (( $hours > 0 ))   && print -n "${hours}h "
   (( $minutes > 0 )) && print -n "${minutes}m "
-  (( $seconds > 5 )) && print -n "${seconds}s"
-  (( $tmp <= 5 )) && print -n "${1}ms"
+  (( $seconds > 5 )) && print -n "${seconds}s "
+  (( $tmp <= 5 ))    && print -n "${1}ms"
 }
 
 # displays the exec time of the last command if set threshold was exceeded
 prompt_filthy_cmd_exec_time() {
-  local stop=$((EPOCHREALTIME*1000))
+  local stop=$(( EPOCHREALTIME * 1000 ))
   local start=${cmd_timestamp:-$stop}
   integer elapsed=$stop-$start
-  (($elapsed > ${FILTHY_CMD_MAX_EXEC_TIME:=500})) && prompt_filthy_human_time $elapsed
+  (( $elapsed > ${FILTHY_CMD_MAX_EXEC_TIME:=500} )) && prompt_filthy_human_time $elapsed
 }
 
 prompt_filthy_preexec() {
-  cmd_timestamp=$((EPOCHREALTIME*1000))
+  cmd_timestamp=$(( EPOCHREALTIME * 1000 ))
 
   # shows the current dir and executed command in the title when a process is active
   print -Pn "\e]0;"
@@ -225,13 +225,13 @@ prompt_filthy_git_repo_status() {
     down="$count[(w)2]"
 
     # Check if either push or pull is needed
-    [[ $up > 0 || $down > 0 ]] && rtn+=" "
+    [[ $up -gt 0 || $down -gt 0 ]] && rtn+=" "
 
     # Push is needed, show up arrow
-    [[ $up > 0 ]] && rtn+="%F{yellow}⇡%f"
+    [[ $up -gt 0 ]] && rtn+="%F{yellow}⇡%f"
 
     # Pull is needed, show down arrow
-    [[ $down > 0 ]] && rtn+="%F{yellow}⇣%f"
+    [[ $down -gt 0 ]] && rtn+="%F{yellow}⇣%f"
   fi
 
   print $rtn
