@@ -284,6 +284,13 @@ prompt_filthy_connection_info() {
   fi
 }
 
+prompt_filthy_prompt_char() {
+  case $KEYMAP in
+    vicmd) echo "%(?.%F{blue}.%F{red}$(prompt_filthy_nice_exit_code))${PROMPT_FILTHY_VICMD_CHAR:-●}%f"   ;;
+    *)     echo "%(?.%F{green}.%F{red}$(prompt_filthy_nice_exit_code))${PROMPT_FILTHY_PROMPT_CHAR:-❯}%f" ;;
+  esac
+}
+
 prompt_filthy_setup() {
   # prevent percentage showing up
   # if output doesn't end with a newline
@@ -293,13 +300,12 @@ prompt_filthy_setup() {
 
   zmodload zsh/datetime
   autoload -Uz add-zsh-hook
-  # autoload -Uz git-info
 
   add-zsh-hook precmd prompt_filthy_precmd
   add-zsh-hook preexec prompt_filthy_preexec
 
   # prompt turns red if the previous command didn't exit with 0
-  PROMPT='%(?.%F{green}.%F{red}$(prompt_filthy_nice_exit_code))❯%f '
+  PROMPT='$(prompt_filthy_prompt_char) '
 
   RPROMPT='$(prompt_filthy_rprompt)'
 }
