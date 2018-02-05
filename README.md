@@ -94,6 +94,10 @@ command exited with a status not equal to `0`
 
 Prints the current value of `$ZSH_VERSION` in `$RPROMPT`
 
+### `FILTHY_ALWAYS_SHOW_FULL_PATH=1`
+
+Do not show relative paths when `$PWD` is within a git repository
+
 ## Example
 
 ```sh

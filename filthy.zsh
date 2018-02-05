@@ -110,7 +110,7 @@ prompt_filthy_precmd() {
   prompt_filthy_preprompt+="$(prompt_filthy_connection_info)"
 
   # check if we're in a git repo, and show git info if we are
-  if command git rev-parse --is-inside-work-tree &>/dev/null; then
+  if [[ FILTHY_ALWAYS_SHOW_FULL_PATH -ne 1 ]] && command git rev-parse --is-inside-work-tree &>/dev/null; then
     # Print the name of the repository
     git_root=$(git rev-parse --show-toplevel)
     prompt_filthy_preprompt+="%B%F{yellow}$(basename ${git_root})%b%f"
