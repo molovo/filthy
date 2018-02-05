@@ -152,10 +152,10 @@ prompt_filthy_rprompt() {
     ci_status=$(prompt_filthy_ci_status)
   fi
 
-  print "${branch}${repo_status}${ci_status}"
+  echo -n "${branch}${repo_status}${ci_status}"
 
   if [[ $FILTHY_SHOW_ZSH_VERSION -eq 1 ]]; then
-    print "%F{yellow} ${v}%f"
+    echo -n "%F{yellow} ${ZSH_VERSION}%f"
   fi
 }
 
