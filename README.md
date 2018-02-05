@@ -85,10 +85,14 @@ prompt filthy
 
 The max execution time of a process before its run time is shown when it exits. Defaults to `5` seconds.
 
-### `FILTHY_SHOW_EXIT_CODE`
+### `FILTHY_SHOW_EXIT_CODE=1`
 
 Prints a nice exit code in front of the prompt character when the previous
 command exited with a status not equal to `0`
+
+### `FILTHY_SHOW_ZSH_VERSION=1`
+
+Prints the current value of `$ZSH_VERSION` in `$RPROMPT`
 
 ## Example
 
