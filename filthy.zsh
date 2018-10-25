@@ -232,10 +232,10 @@ prompt_filthy_git_repo_status() {
     [[ $up -gt 0 || $down -gt 0 ]] && rtn+=" "
 
     # Push is needed, show up arrow
-    [[ $up -gt 0 ]] && rtn+="%F{yellow}⇡%f"
+    [[ $up -gt 0 ]] && rtn+="%F{yellow}⇡$up%f"
 
     # Pull is needed, show down arrow
-    [[ $down -gt 0 ]] && rtn+="%F{yellow}⇣%f"
+    [[ $down -gt 0 ]] && rtn+="%F{yellow}⇣$down%f"
   fi
 
   print $rtn
