@@ -212,6 +212,9 @@ prompt_filthy_git_repo_status() {
   local up
   local down
 
+  stashes="$(git stash list 2>/dev/null)"
+  [[ $stashes != "" ]] && rtn+=" %F{yellow}≡%f"
+
   dirty="$(git diff --ignore-submodules=all HEAD 2>/dev/null)"
   [[ $dirty != "" ]] && rtn+=" %F{242}…%f"
 
