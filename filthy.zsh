@@ -170,6 +170,50 @@ prompt_filthy_precmd() {
   unset cmd_timestamp
 }
 
+prompt_filthy_node_version() {
+  if builtin type node &>/dev/null; then
+    echo -n "  %F{242} %F{yellow}$(node -v)%f"
+  fi
+}
+
+prompt_filthy_zsh_version() {
+  echo -n "  %F{242}ZSH %F{yellow}${ZSH_VERSION}%f"
+}
+
+prompt_filthy_php_version() {
+  if builtin type php &>/dev/null; then
+    echo -n "  %F{242} %F{yellow}$(php -v | head -1 | awk '{print $2}')%f"
+  fi
+}
+
+prompt_filthy_ruby_version() {
+  if builtin type ruby &>/dev/null; then
+    echo -n "  %F{242} %F{yellow}$(ruby -v | awk '{print $2}')%f"
+  fi
+}
+
+prompt_filthy_python_version() {
+  if builtin type python &>/dev/null; then
+    echo -n "  %F{242} %F{yellow}$(python -V 2>&1 | awk '{print $2}')%f"
+  elif builtin type python3 &>/dev/null; then
+    echo -n "  %F{242} %F{yellow}$(python3 -V 2>&1 | awk '{print $2}')%f"
+  fi
+}
+
+prompt_filthy_versions() {
+  setopt shwordsplit
+  for version in ${FILTHY_SHOW_VERSIONS}; do
+    case $version in
+      node)   prompt_filthy_node_version   ;;
+      zsh)    prompt_filthy_zsh_version    ;;
+      php)    prompt_filthy_php_version    ;;
+      ruby)   prompt_filthy_ruby_version   ;;
+      python) prompt_filthy_python_version ;;
+    esac
+  done
+  unsetopt shwordsplit
+}
+
 # Renders the right hand prompt. Always runs in a background worker, so it is
 # free to be as slow as git is.
 prompt_filthy_rprompt() {
@@ -183,11 +227,8 @@ prompt_filthy_rprompt() {
     ci_status=$(prompt_filthy_ci_status)
   fi
 
-  rtn="${branch}${repo_status}${ci_status}"
 
-  if [[ $FILTHY_SHOW_ZSH_VERSION -eq 1 ]]; then
-    rtn+="%F{yellow} ${ZSH_VERSION}%f"
-  fi
+  rtn="${branch}${repo_status}${ci_status}$(prompt_filthy_versions)"
 
   # A single newline terminated line, so the reader gets a complete record
   print -r -- "$rtn"
