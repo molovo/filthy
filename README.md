@@ -4,19 +4,18 @@
 
 ![](screenshots/title.png)
 
-
 ## Overview
 
 Based on the great [pure theme](http://github.com/sindresorhus/pure) by [@sindresorhus](http://github.com/sindresorhus) and [@mafredri](https://github.com/mafredri), but with a few notable changes.
 
-* Prompt character is green when previous command was successful, red when not.
-* Git repo info shown in RPROMPT.
-* Path is shown relative to `git-root` when in a repository.
-* Current commit/tag shown if HEAD is detached.
-* 'Initial' status is shown in a new repo
-* User and host always shown in RPROMPT, green for standard users, red if privileged.
-* Command execution time shows in ms if less than one second has elapsed.
-* Temporary messages can be displayed in the pre-prompt, e.g. to show feedback after an asynchronous command has completed. Just echo the text you want to display to `${ZDOTDIR:-$HOME}/.promptmsg`. The message is automagically cleared once shown.
+- Prompt character is green when previous command was successful, red when not.
+- Git repo info shown in RPROMPT.
+- Path is shown relative to `git-root` when in a repository.
+- Current commit/tag shown if HEAD is detached.
+- 'Initial' status is shown in a new repo
+- User and host always shown in RPROMPT, green for standard users, red if privileged.
+- Command execution time shows in ms if less than one second has elapsed.
+- Temporary messages can be displayed in the pre-prompt, e.g. to show feedback after an asynchronous command has completed. Just echo the text you want to display to `${ZDOTDIR:-$HOME}/.promptmsg`. The message is automagically cleared once shown.
 
 ## Install
 
@@ -46,9 +45,10 @@ zulu theme filthy
 ### Manually
 
 1. Either…
-  - Clone this repo
-  - add it as a submodule, or
-  - just download `filthy.zsh`
+
+- Clone this repo
+- add it as a submodule, or
+- just download `filthy.zsh`
 
 2. Symlink `filthy.zsh` to somewhere in [`$fpath`](http://www.refining-linux.org/archives/46/ZSH-Gem-12-Autoloading-functions/) with the name `prompt_filthy_setup`.
 
@@ -57,7 +57,8 @@ zulu theme filthy
 ```
 $ ln -s "$PWD/filthy.zsh" /usr/local/share/zsh/site-functions/prompt_filthy_setup
 ```
-*Run `echo $fpath` to see possible locations.*
+
+_Run `echo $fpath` to see possible locations._
 
 For a user-specific installation (which would not require escalated privileges), simply add a directory to `$fpath` for that user:
 
@@ -82,7 +83,6 @@ autoload -U promptinit && promptinit
 prompt filthy
 ```
 
-
 ## Options
 
 ### `FILTHY_CMD_MAX_EXEC_TIME`
@@ -94,9 +94,9 @@ The max execution time of a process before its run time is shown when it exits. 
 Prints a nice exit code in front of the prompt character when the previous
 command exited with a status not equal to `0`
 
-### `FILTHY_SHOW_ZSH_VERSION=1`
+### `FILTHY_SHOW_VERSIONS='node zsh php ruby python'`
 
-Prints the current value of `$ZSH_VERSION` in `$RPROMPT`
+Chooses which language versions to display in `$RPROMPT`
 
 ### `FILTHY_ALWAYS_SHOW_FULL_PATH=1`
 
@@ -148,13 +148,11 @@ FILTHY_CMD_MAX_EXEC_TIME=10
 prompt filthy
 ```
 
-
 ## Tips
 
 [Base16 Ocean](http://chriskempson.github.io/base16/#ocean) theme with the [Nitti Light](https://www.boldmonday.com/typeface/nitti/) font (18pt) is a beautiful combination, as seen in the screenshot above. Just make sure you have anti-aliasing enabled in your Terminal.
 
 To have commands colorized as seen in the screenshot install [zsh-syntax-highlighting](https://github.com/zsh-users/zsh-syntax-highlighting).
-
 
 ## Integration
 
