@@ -22,6 +22,10 @@ Based on the great [pure theme](http://github.com/sindresorhus/pure) by [@sindre
 
 Can be installed with `npm` or manually. Requires git 1.7.10+ and ZSH 4.3.17+.
 
+[fswatch](https://github.com/emcrisostomo/fswatch) is optional. Install it
+(`brew install fswatch`, `apt install fswatch`) to get [live git
+updates](#live-git-updates).
+
 (To show current tag/commit when head is detached, git 2.0.0+ is required. Otherwise it just shows 'no branch')
 
 ### npm
@@ -97,6 +101,39 @@ Prints the current value of `$ZSH_VERSION` in `$RPROMPT`
 ### `FILTHY_ALWAYS_SHOW_FULL_PATH=1`
 
 Do not show relative paths when `$PWD` is within a git repository
+
+### `FILTHY_LIVE_GIT_OFF=1`
+
+Turn off [live git updates](#live-git-updates)
+
+### `FILTHY_LIVE_GIT_LATENCY`
+
+How long, in seconds, fswatch batches up filesystem events before waking the
+prompt. Defaults to `0.5`. Raise it in very busy repositories.
+
+### `FILTHY_FETCH_INTERVAL`
+
+How often, in seconds, to fetch from the remote in the background. Defaults to
+`180`. Set it to `0` to never fetch, in which case the ahead/behind counts only
+move when you fetch or pull yourself.
+
+### `FILTHY_CI_STATUS_INTERVAL`
+
+How often, in seconds, to ask `hub` for the CI status. Defaults to `30`.
+
+## Live git updates
+
+When [fswatch](https://github.com/emcrisostomo/fswatch) is installed, filthy
+watches the repository you're in and refreshes the git segment while the prompt
+is idle. Commit, stage or switch branches in another terminal and the prompt
+updates on its own, without you having to press a key.
+
+Without fswatch everything still works, the git segment just updates when a new
+prompt is drawn, as it always has. Set `FILTHY_LIVE_GIT_OFF=1` to turn live
+updates off even when fswatch is available.
+
+The git segment is always rendered in a background worker, so a slow repository
+never blocks the prompt or holds up your typing.
 
 ## Example
 

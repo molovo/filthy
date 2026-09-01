@@ -6,6 +6,9 @@
 # MIT License
 
 # Largely based on Pure by Sindre Sorhus <https://github.com/sindresorhus/pure>
+#
+# Live git updates adapted from Cobalt Spark by Andrey Zhuchkov (MIT)
+# <https://github.com/azhuchkov/cobalt-spark>
 
 # For my own and others sanity
 # git:
@@ -19,6 +22,24 @@
 # %n => username
 # %m => shortname host
 # %(?..) => prompt conditional - %(condition.true.false)
+
+# Dynamic file descriptor syntax ({fd}) has to be parsed with IGNORE_BRACES off.
+# Remember the caller's setting; it's restored at the bottom of this file.
+typeset -g __filthy_restore_ignorebraces=${options[ignorebraces]}
+unsetopt ignorebraces
+
+# The git segment is rendered by a background worker and cached here, so prompt
+# expansion never waits on git. Guarded so re-sourcing the prompt doesn't blank
+# the current value or lose track of a running worker.
+if (( ! ${+__filthy_rprompt} )); then
+  typeset -g  __filthy_rprompt=
+  typeset -gi __filthy_async_fd=-1
+  typeset -gi __filthy_async_pending=0
+fi
+
+# Last fetch time, keyed by git common dir. Kept in memory rather than in a file
+# so that throttling a fetch can't itself write inside .git.
+typeset -gA __filthy_last_fetch
 
 prompt_filthy_nice_exit_code() {
   local exit_status="${1:-$(print -P %?)}";
@@ -101,7 +122,7 @@ prompt_filthy_string_length() {
 }
 
 prompt_filthy_precmd() {
-  local prompt_filthy_preprompt git_root current_path branch repo_status
+  local prompt_filthy_preprompt git_root current_path
 
   # Ensure prompt starts on a new line
   prompt_filthy_preprompt="\n"
@@ -139,11 +160,21 @@ prompt_filthy_precmd() {
 
   print -P $prompt_filthy_preprompt
 
+  # Kick off a fetch and a fresh render of the git segment. Both belong here
+  # rather than in the render itself: a fetch writes inside .git, and firing one
+  # from a watcher-triggered redraw would loop.
+  prompt_filthy_maybe_fetch
+  prompt_filthy_async_start
+
   # reset value since `preexec` isn't always triggered
   unset cmd_timestamp
 }
 
+# Renders the right hand prompt. Always runs in a background worker, so it is
+# free to be as slow as git is.
 prompt_filthy_rprompt() {
+  local branch repo_status ci_status rtn
+
   # check if we're in a git repo, and show git info if we are
   if command git rev-parse --is-inside-work-tree &>/dev/null; then
     # Print the repository status
@@ -152,22 +183,43 @@ prompt_filthy_rprompt() {
     ci_status=$(prompt_filthy_ci_status)
   fi
 
-  echo -n "${branch}${repo_status}${ci_status}"
+  rtn="${branch}${repo_status}${ci_status}"
 
   if [[ $FILTHY_SHOW_ZSH_VERSION -eq 1 ]]; then
-    echo -n "%F{yellow} ${ZSH_VERSION}%f"
+    rtn+="%F{yellow} ${ZSH_VERSION}%f"
   fi
+
+  # A single newline terminated line, so the reader gets a complete record
+  print -r -- "$rtn"
+}
+
+# Turns a path into something safe and bounded to use as a filename
+prompt_filthy_path_key() {
+  local str=$1 char
+  integer hash=0
+
+  for char in ${(s::)str}; do
+    (( hash = (hash * 31 + #char) % 4294967291 ))
+  done
+
+  print -r -- "${${str:t}//[^[:alnum:]._-]/_}-${hash}"
 }
 
 prompt_filthy_ci_status() {
-  local state git_dir_local state_file
+  local state git_dir_local state_file interval
+  local -a stat_result
 
   [[ $FILTHY_SHOW_CI_STATUS -eq 0 ]] && return
 
   builtin type hub >/dev/null 2>&1 || return
 
-  git_dir_local="$(git rev-parse --git-dir)"
-  state_file="${git_dir_local}/ci-status"
+  git_dir_local="$(command git rev-parse --git-common-dir 2>/dev/null)" || return
+  [[ -z $git_dir_local ]] && return
+  git_dir_local=${git_dir_local:A}
+
+  # Keep the state file outside .git. Written inside, every refresh would wake
+  # the file watcher, which would trigger another refresh, and so on.
+  state_file="${TMPDIR:-/tmp}/filthy-ci-status-$(prompt_filthy_path_key $git_dir_local)"
 
   function _retrieve_ci_status() {
     # Delay the asynchronous process, otherwise the status file
@@ -175,27 +227,40 @@ prompt_filthy_ci_status() {
     sleep 1
 
     state=$(hub ci-status 2>&1)
-    cat /dev/null >! "${state_file}" 2>/dev/null
+    cat /dev/null >! "${state_file}.new" 2>/dev/null
     case $state in
       success )
-        print '%F{green}●%f' >> "${state_file}"
+        print '%F{green}●%f' >> "${state_file}.new"
         ;;
       pending )
-        print '%F{yellow}○%f' >> "${state_file}"
+        print '%F{yellow}○%f' >> "${state_file}.new"
         ;;
       failure )
-        print '%F{red}●%f' >> "${state_file}"
+        print '%F{red}●%f' >> "${state_file}.new"
         ;;
       error )
-        print '%F{red}‼%f' >> "${state_file}"
+        print '%F{red}‼%f' >> "${state_file}.new"
         ;;
       'no status' )
-        print '%F{242}○%f' >> "${state_file}"
+        print '%F{242}○%f' >> "${state_file}.new"
         ;;
     esac
+
+    # Swap it in whole, so a concurrent read never sees a half written file
+    command mv -f "${state_file}.new" "${state_file}" 2>/dev/null
   }
 
-  _retrieve_ci_status >/dev/null 2>&1 &!
+  # Ask hub at most once every $FILTHY_CI_STATUS_INTERVAL seconds. The state
+  # file's mtime is the throttle: this runs in a worker subshell, so a variable
+  # wouldn't survive to the next call.
+  interval=${FILTHY_CI_STATUS_INTERVAL:-30}
+  if ! zstat -A stat_result +mtime "$state_file" 2>/dev/null ||
+      (( EPOCHSECONDS - stat_result[1] >= interval )); then
+    # Claim the slot before backgrounding. `hub` sleeps for a second before it
+    # writes, and without this every refresh in that window would spawn another.
+    command touch "$state_file" 2>/dev/null
+    _retrieve_ci_status >/dev/null 2>&1 &!
+  fi
 
   state=$(cat "${state_file}" 2>/dev/null)
 
@@ -203,14 +268,14 @@ prompt_filthy_ci_status() {
 }
 
 prompt_filthy_git_repo_status() {
-  # Do a fetch asynchronously
-  git fetch > /dev/null 2>&1 &!
-
   local clean
   local rtn=""
   local count
   local up
   local down
+  local stashes
+  local dirty
+  local staged
 
   stashes="$(git stash list 2>/dev/null)"
   [[ $stashes != "" ]] && rtn+=" %F{yellow}≡%f"
@@ -256,14 +321,14 @@ prompt_filthy_git_branch() {
 
   # check if HEAD is detached
   if [[ -d "${git_dir_local}/rebase-merge" ]]; then
-    branch=$(git status | head -5 | tail -1 | awk '{print $6}')
-    rtn="%F{red}rebasing interactively%f%F{242} → ${branch//([[:space:]]|\')/}%f"
+    branch=${${$(git status | head -5 | tail -1 | awk '{print $6}')//([[:space:]]|\')/}//\%/%%}
+    rtn="%F{red}rebasing interactively%f%F{242} → ${branch}%f"
   elif [[ -d "${git_dir_local}/rebase-apply" ]]; then
-    branch=$(git status | head -2 | tail -1 | awk '{print $6}')
-    rtn="%F{red}rebasing%f%F{242} → ${branch//([[:space:]]|\')/}%f"
+    branch=${${$(git status | head -2 | tail -1 | awk '{print $6}')//([[:space:]]|\')/}//\%/%%}
+    rtn="%F{red}rebasing%f%F{242} → ${branch}%f"
   elif [[ -f "${git_dir_local}/MERGE_HEAD" ]]; then
-    branch=$(git status | head -1 | awk '{print $3}')
-    rtn="%F{red}merging%f%F{242} → ${branch//([[:space:]]|\')/}%f"
+    branch=${${$(git status | head -1 | awk '{print $3}')//([[:space:]]|\')/}//\%/%%}
+    rtn="%F{red}merging%f%F{242} → ${branch}%f"
   elif [[ "$branch" = "HEAD" ]]; then
     commit=$(git status HEAD -uno --ignore-submodules=all | head -1 | awk '{print $4}' 2>/dev/null)
 
@@ -272,11 +337,11 @@ prompt_filthy_git_branch() {
     else
       rtn="%F{242}detached@%f"
       rtn+="%F{yellow}"
-      rtn+="$commit"
+      rtn+="${commit//\%/%%}"
       rtn+="%f"
     fi
   else
-    rtn="%F{242}$branch%f"
+    rtn="%F{242}${branch//\%/%%}%f"
   fi
 
   print "$rtn"
@@ -298,6 +363,306 @@ prompt_filthy_prompt_char() {
   esac
 }
 
+# Fetch from the remote in the background, at most once every
+# $FILTHY_FETCH_INTERVAL seconds. Set the interval to 0 to never fetch.
+prompt_filthy_maybe_fetch() {
+  local key interval
+
+  interval=${FILTHY_FETCH_INTERVAL:-180}
+  (( interval <= 0 )) && return
+
+  key="$(command git rev-parse --git-common-dir 2>/dev/null)" || return
+  [[ -z $key ]] && return
+  key=${key:A}
+
+  (( EPOCHSECONDS - ${__filthy_last_fetch[$key]:-0} < interval )) && return
+
+  __filthy_last_fetch[$key]=$EPOCHSECONDS
+  command git fetch >/dev/null 2>&1 &!
+}
+
+# Render the right hand prompt in a background worker. The result arrives on a
+# file descriptor watched by `zle -F`, which fires while the line editor is idle.
+prompt_filthy_async_start() {
+  local fd
+
+  # A worker is already in flight. Note that its result will be stale and let
+  # the callback start a fresh one, rather than piling up processes.
+  if (( __filthy_async_fd >= 0 )); then
+    __filthy_async_pending=1
+    return
+  fi
+
+  # No redirections beyond the fd itself: `exec` without a command makes any
+  # extra redirection permanent for the whole shell.
+  exec {fd}< <(prompt_filthy_rprompt)
+
+  if ! zle -F $fd prompt_filthy_async_callback 2>/dev/null; then
+    exec {fd}<&-
+    return
+  fi
+
+  __filthy_async_fd=$fd
+}
+
+prompt_filthy_async_callback() {
+  emulate -L zsh
+
+  local fd=$1
+
+  # Keep the read from leaking a REPLY into the user's session
+  local REPLY
+
+  # Anything short of a complete line means the worker died; keep whatever we
+  # last rendered rather than blanking the prompt.
+  if IFS= read -r -u $fd; then
+    __filthy_rprompt=$REPLY
+  fi
+
+  zle -F $fd 2>/dev/null
+  exec {fd}<&-
+  __filthy_async_fd=-1
+
+  # `zle -F` callbacks run as widgets, but this can still be reached with the
+  # line editor inactive
+  zle .reset-prompt 2>/dev/null
+
+  if (( __filthy_async_pending )); then
+    __filthy_async_pending=0
+    prompt_filthy_async_start
+  fi
+}
+
+# Live git updates
+#
+# When fswatch is available, watch the repository and refresh the git segment
+# while the prompt sits idle, so changes made in another terminal show up
+# without having to press a key. Without fswatch this all quietly no-ops and the
+# prompt updates on each new prompt as before.
+#
+# Adapted from Cobalt Spark by Andrey Zhuchkov (MIT)
+
+if (( ! ${+__filthy_live_git_events_fd} )); then
+  typeset -gi __filthy_live_git_events_fd=-1
+  typeset -gi __filthy_live_git_supervisor_fd=-1
+  typeset -g  __filthy_live_git_root=
+fi
+
+prompt_filthy_live_git_shutdown() {
+  emulate -L zsh
+
+  if (( __filthy_live_git_events_fd >= 0 )); then
+    zle -F $__filthy_live_git_events_fd 2>/dev/null
+    exec {__filthy_live_git_events_fd}<&-
+    __filthy_live_git_events_fd=-1
+  fi
+
+  if (( __filthy_live_git_supervisor_fd >= 0 )); then
+    print -r -u $__filthy_live_git_supervisor_fd -- shutdown 2>/dev/null
+    exec {__filthy_live_git_supervisor_fd}>&-
+    __filthy_live_git_supervisor_fd=-1
+  fi
+
+  __filthy_live_git_root=
+}
+
+# Escape regex metacharacters, so repository and $TMPDIR paths can be dropped
+# into fswatch's extended regex filters verbatim
+prompt_filthy_live_git_quote_ere() {
+  emulate -L zsh
+  setopt localoptions extended_glob
+
+  local MATCH MBEGIN MEND
+  local pattern='(#m)[\[.^$*+?(){}|\\]'
+
+  REPLY=${1//$~pattern/\\$MATCH}
+}
+
+prompt_filthy_live_git_on_event() {
+  emulate -L zsh
+
+  local fd=$1
+  local error=${2-}
+
+  # Keep the read from leaking a REPLY into the user's session
+  local REPLY
+
+  # EOF, or the watcher died
+  if [[ -n $error ]] || ! IFS= read -r -u $fd; then
+    prompt_filthy_live_git_shutdown
+    return
+  fi
+
+  # Drain any batches already queued up behind this one
+  while IFS= read -r -t -u $fd; do
+    :
+  done
+
+  # Re-render off the line editor's thread, so typing never stalls on git
+  prompt_filthy_async_start
+}
+
+prompt_filthy_live_git_bootstrap() {
+  emulate -L zsh
+  setopt localoptions nobgnice
+
+  local root=$1
+  local git_dir=$2
+  local common_dir=$3
+  shift 3
+
+  local -a paths=("$@")
+  local -a filters
+  local dir
+  local REPLY
+
+  # Ignore the paths git churns on its own. Without these, an ordinary fetch or
+  # commit would wake the watcher, which would redraw, which would wake it again.
+  for dir in "$git_dir" ${${common_dir:#$git_dir}:+"$common_dir"}; do
+    prompt_filthy_live_git_quote_ere "$dir"
+    filters+=(
+      -e "^${REPLY}/objects(/.*)?$"
+      -e "^${REPLY}/logs(/.*)?$"
+      -e "^${REPLY}/fsmonitor--daemon(/.*)?$"
+      -e "^${REPLY}/fsmonitor--daemon\\.ipc$"
+      -e "^${REPLY}/.*\\.lock$"
+      -e "^${REPLY}/COMMIT_EDITMSG$"
+      -e "^${REPLY}/FETCH_HEAD$"
+    )
+  done
+
+  local tmpdir=${TMPDIR:-/tmp}
+  local fifo_dir
+  fifo_dir=$(command mktemp -d "${tmpdir%/}/filthy-fswatch.XXXXXX") || return 1
+
+  local events_fifo="$fifo_dir/events"
+  local supervisor_fifo="$fifo_dir/supervisor"
+
+  prompt_filthy_live_git_fs_cleanup() {
+    command rm -f -- "$events_fifo" "$supervisor_fifo"
+    command rmdir -- "$fifo_dir" 2>/dev/null
+  }
+
+  command mkfifo "$events_fifo" "$supervisor_fifo" || {
+    prompt_filthy_live_git_fs_cleanup
+    return 1
+  }
+
+  # Exclude the FIFO directory, in case $TMPDIR sits inside a watched path
+  prompt_filthy_live_git_quote_ere "${fifo_dir:A}"
+  filters+=(-e "^${REPLY}(/.*)?$")
+
+  # O_RDWR opens the FIFO without blocking for a peer
+  local supervisor_fd
+  sysopen -r -w -o cloexec -u supervisor_fd "$supervisor_fifo" || {
+    prompt_filthy_live_git_fs_cleanup
+    return 1
+  }
+
+  # The outer subshell keeps the detached supervisor from clobbering our $!
+  (
+    # The inner one owns fswatch, and stops it when we shut down or exec
+    (
+      emulate -L zsh
+      setopt localoptions nobgnice
+
+      # Reopen read-only, so closing the writer shows up here as EOF
+      exec {supervisor_fd}>&-
+      sysopen -r -u supervisor_fd "$supervisor_fifo" || {
+        # Open and close the events FIFO, so the parent sees EOF and tears down
+        : >"$events_fifo"
+        exit 1
+      }
+
+      command fswatch --recursive --one-per-batch \
+        --latency "${FILTHY_LIVE_GIT_LATENCY:-0.5}" \
+        --monitor-property darwin.eventStream.noDefer=true \
+        --extended --allow-overflow \
+        "${filters[@]}" -- "${paths[@]}" >"$events_fifo" \
+        2> >(while IFS= read -r line; do
+          print -u2 -r -- "filthy fswatch: $line"
+        done) &
+
+      local fswatch_pid=$!
+
+      # Block until we're told to stop, or the writer goes away
+      IFS= read -r -u "$supervisor_fd"
+
+      kill "$fswatch_pid" 2>/dev/null
+      wait "$fswatch_pid" 2>/dev/null
+
+      exec {supervisor_fd}<&-
+
+      prompt_filthy_live_git_fs_cleanup
+    ) &!
+  )
+
+  local events_fd
+  sysopen -r -o cloexec -u events_fd "$events_fifo" || {
+    exec {supervisor_fd}>&-
+    return 1
+  }
+
+  __filthy_live_git_root=$root
+  __filthy_live_git_events_fd=$events_fd
+  __filthy_live_git_supervisor_fd=$supervisor_fd
+
+  if ! zle -F $events_fd prompt_filthy_live_git_on_event; then
+    prompt_filthy_live_git_shutdown
+    return 1
+  fi
+}
+
+prompt_filthy_live_git_check_pwd() {
+  emulate -L zsh
+
+  if [[ -n $FILTHY_LIVE_GIT_OFF ]]; then
+    prompt_filthy_live_git_shutdown
+    return 0
+  fi
+
+  # Nothing to do if live updates aren't available. A watcher may already be
+  # running from before fswatch left $PATH, so still tear down.
+  if ! zmodload zsh/system 2>/dev/null || ! whence -p fswatch >/dev/null 2>&1; then
+    prompt_filthy_live_git_shutdown
+    return 0
+  fi
+
+  local -a git_dirs
+  git_dirs=("${(@f)$(command git rev-parse \
+    --show-toplevel \
+    --git-dir \
+    --git-common-dir \
+    2>/dev/null)}") || git_dirs=()
+
+  # Not inside a work tree
+  if (( ${#git_dirs} != 3 )); then
+    prompt_filthy_live_git_shutdown
+    return 0
+  fi
+
+  local root=${git_dirs[1]:A}
+  local git_dir=${git_dirs[2]:A}
+  local common_dir=${git_dirs[3]:A}
+
+  # Moving around inside the same repository needs no action
+  [[ $root == $__filthy_live_git_root ]] && return 0
+
+  prompt_filthy_live_git_shutdown
+
+  local -a paths=("$root")
+
+  # Linked worktrees and external git dirs live outside the work tree
+  [[ $git_dir != $root/* ]] && paths+=("$git_dir")
+  [[ $common_dir != $root/* && $common_dir != $git_dir ]] && paths+=("$common_dir")
+
+  prompt_filthy_live_git_bootstrap \
+    "$root" "$git_dir" "$common_dir" "${paths[@]}" || return 0
+}
+
+# Clean up a watcher left behind by a previous sourcing of the prompt
+prompt_filthy_live_git_shutdown
+
 prompt_filthy_setup() {
   # prevent percentage showing up
   # if output doesn't end with a newline
@@ -306,15 +671,29 @@ prompt_filthy_setup() {
   prompt_opts=(cr subst percent)
 
   zmodload zsh/datetime
+  zmodload -F zsh/stat b:zstat 2>/dev/null
   autoload -Uz add-zsh-hook
 
+  # Drop any hooks left behind by a previous sourcing of the prompt
+  add-zsh-hook -d precmd prompt_filthy_precmd
+  add-zsh-hook -d preexec prompt_filthy_preexec
+  add-zsh-hook -d precmd prompt_filthy_live_git_check_pwd
+  add-zsh-hook -d zshexit prompt_filthy_live_git_shutdown
+
+  add-zsh-hook precmd prompt_filthy_live_git_check_pwd
   add-zsh-hook precmd prompt_filthy_precmd
   add-zsh-hook preexec prompt_filthy_preexec
+  add-zsh-hook zshexit prompt_filthy_live_git_shutdown
 
   # prompt turns red if the previous command didn't exit with 0
   PROMPT='$(prompt_filthy_prompt_char) '
 
-  RPROMPT='$(prompt_filthy_rprompt)'
+  # Rendered asynchronously, and refreshed live while the prompt is idle
+  RPROMPT='${__filthy_rprompt}'
 }
 
 prompt_filthy_setup "$@"
+
+# Restore the caller's IGNORE_BRACES setting
+[[ $__filthy_restore_ignorebraces == on ]] && setopt ignorebraces
+unset __filthy_restore_ignorebraces
