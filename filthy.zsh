@@ -201,8 +201,13 @@ prompt_filthy_python_version() {
 }
 
 prompt_filthy_versions() {
-  setopt shwordsplit
-  for version in ${FILTHY_SHOW_VERSIONS}; do
+  local version
+
+  # Split on whitespace whatever the caller's $IFS is, and without turning
+  # SH_WORD_SPLIT off in their shell on the way back out
+  local IFS=$' \t\n'
+
+  for version in ${=FILTHY_SHOW_VERSIONS}; do
     case $version in
       node)   prompt_filthy_node_version   ;;
       zsh)    prompt_filthy_zsh_version    ;;
@@ -211,7 +216,6 @@ prompt_filthy_versions() {
       python) prompt_filthy_python_version ;;
     esac
   done
-  unsetopt shwordsplit
 }
 
 # Renders the right hand prompt. Always runs in a background worker, so it is
@@ -312,6 +316,7 @@ prompt_filthy_git_repo_status() {
   local clean
   local rtn=""
   local count
+  local -a counts
   local up
   local down
   local stashes
@@ -333,9 +338,13 @@ prompt_filthy_git_repo_status() {
     # if there is, check git left and right arrow_status
     count="$(command git rev-list --left-right --count HEAD...@'{u}' 2>/dev/null)"
 
-    # Get the push and pull counts
-    up="$count[(w)1]"
-    down="$count[(w)2]"
+    # Get the push and pull counts. git separates them with a tab, so split on
+    # whitespace whatever the caller's $IFS is; a `(w)` subscript would use
+    # $IFS instead, and leave both counts in $up
+    local IFS=$' \t\n'
+    counts=(${=count})
+    up=${counts[1]:-0}
+    down=${counts[2]:-0}
 
     # Check if either push or pull is needed
     [[ $up -gt 0 || $down -gt 0 ]] && rtn+=" "

@@ -1,0 +1,656 @@
+#!/usr/bin/env zunit
+
+@setup {
+  # Scrub any filthy configuration inherited from the shell running the tests,
+  # so results don't depend on whoever is running them. This has to happen
+  # before $_tmp is exported, or the FILTHY_* glob would eat it too.
+  zmodload -i zsh/parameter
+  unset ${(k)parameters[(I)(FILTHY_*|PROMPT_FILTHY_*|ZSH_PROMPT_EXIT_SIGNAL_*)]} 2>/dev/null || true
+  unset cmd_timestamp 2>/dev/null || true
+
+  # An isolated home, temp dir and $PATH. prompt_filthy_precmd truncates
+  # $ZDOTDIR/.promptmsg and the CI status cache lives in $TMPDIR, so without
+  # this the suite would trample the real ones.
+  export _tmp="$(command mktemp -d "${TMPDIR:-/tmp}/filthy-test.XXXXXX")"
+  export HOME="$_tmp/home"
+  export ZDOTDIR="$HOME"
+  export TMPDIR="$_tmp/tmp"
+  command mkdir -p "$HOME" "$TMPDIR" "$_tmp/bin"
+  export PATH="$_tmp/bin:$PATH"
+
+  # Keep the fixtures away from the user's git config and identity
+  export GIT_CONFIG_GLOBAL="$_tmp/gitconfig"
+  export GIT_CONFIG_NOSYSTEM=1
+  export GIT_AUTHOR_NAME=filthy GIT_AUTHOR_EMAIL=filthy@example.com
+  export GIT_COMMITTER_NAME=filthy GIT_COMMITTER_EMAIL=filthy@example.com
+
+  load filthy
+
+  # Sourcing the prompt installs its hooks, and preexec fires for every command
+  # in a non-interactive shell too, which would write terminal title escapes
+  # into the output we're asserting against.
+  add-zsh-hook -d preexec prompt_filthy_preexec
+  add-zsh-hook -d precmd prompt_filthy_precmd
+  add-zsh-hook -d precmd prompt_filthy_live_git_check_pwd
+}
+
+@teardown {
+  [[ -n $_tmp ]] && rm -rf "$_tmp"
+}
+
+# ------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------
+
+@test 'human time is broken down into days, hours, minutes and seconds' {
+  run prompt_filthy_human_time 165392000
+
+  assert "$output" same_as '1d 21h 56m 32s '
+}
+
+@test 'human time shows seconds once past the five second mark' {
+  run prompt_filthy_human_time 12000
+
+  assert "$output" same_as '12s '
+}
+
+@test 'human time under five seconds is shown in milliseconds' {
+  run prompt_filthy_human_time 1234
+
+  assert "$output" same_as '1234ms'
+}
+
+@test 'string length ignores colour escapes' {
+  run prompt_filthy_string_length '%F{red}abc%f'
+
+  assert "$output" same_as '3'
+}
+
+@test 'path key is filesystem safe' {
+  run prompt_filthy_path_key '/tmp/some repo/.git'
+
+  assert "$output" matches '^\.git-[0-9]+$'
+
+  run prompt_filthy_path_key '/tmp/some repo'
+
+  assert "$output" matches '^some_repo-[0-9]+$'
+}
+
+@test 'path key is stable, and differs between paths' {
+  run prompt_filthy_path_key '/tmp/one/.git'
+  local first="$output"
+
+  run prompt_filthy_path_key '/tmp/one/.git'
+  assert "$output" same_as "$first"
+
+  run prompt_filthy_path_key '/tmp/two/.git'
+  assert "$output" different_to "$first"
+}
+
+@test 'regex metacharacters are escaped for fswatch filters' {
+  prompt_filthy_live_git_quote_ere '/tmp/a+b(c)/[d]|e.f'
+
+  assert "$REPLY" same_as '/tmp/a\+b\(c\)/\[d]\|e\.f'
+}
+
+@test 'paths without metacharacters are left alone' {
+  prompt_filthy_live_git_quote_ere '/tmp/plain/path'
+
+  assert "$REPLY" same_as '/tmp/plain/path'
+}
+
+# ------------------------------------------------------------------
+# Exit codes and command timing
+# ------------------------------------------------------------------
+
+@test 'exit codes are hidden by default' {
+  run prompt_filthy_nice_exit_code 130
+
+  assert "$output" is_empty
+}
+
+@test 'a zero exit code is never shown' {
+  FILTHY_SHOW_EXIT_CODE=1
+  run prompt_filthy_nice_exit_code 0
+
+  assert "$output" is_empty
+}
+
+@test 'exit codes are named when enabled' {
+  FILTHY_SHOW_EXIT_CODE=1
+
+  run prompt_filthy_nice_exit_code 130
+  assert "$output" contains '130:INT'
+
+  run prompt_filthy_nice_exit_code 1
+  assert "$output" contains '1:WARN'
+
+  run prompt_filthy_nice_exit_code 127
+  assert "$output" contains '127:CNOTFOUND'
+}
+
+@test 'unrecognised exit codes are shown as-is' {
+  FILTHY_SHOW_EXIT_CODE=1
+  run prompt_filthy_nice_exit_code 42
+
+  assert "$output" contains '42:42'
+}
+
+@test 'exit codes are wrapped in the configured prefix and suffix' {
+  FILTHY_SHOW_EXIT_CODE=1
+  ZSH_PROMPT_EXIT_SIGNAL_PREFIX='<<'
+  ZSH_PROMPT_EXIT_SIGNAL_SUFFIX='>>'
+
+  run prompt_filthy_nice_exit_code 130
+
+  assert "$output" contains '<<130:INT>>'
+}
+
+@test 'exec time is hidden below the threshold' {
+  cmd_timestamp=$(( EPOCHREALTIME * 1000 ))
+
+  run prompt_filthy_cmd_exec_time
+
+  assert "$output" is_empty
+}
+
+@test 'exec time is shown once the threshold is exceeded' {
+  cmd_timestamp=$(( (EPOCHREALTIME - 12) * 1000 ))
+
+  run prompt_filthy_cmd_exec_time
+
+  assert "$output" contains '12s'
+}
+
+# ------------------------------------------------------------------
+# Prompt segments
+# ------------------------------------------------------------------
+
+@test 'connection info shows user and host over SSH' {
+  SSH_CONNECTION='1.2.3.4 1 5.6.7.8 22'
+
+  run prompt_filthy_connection_info
+
+  assert "$output" contains '%n%f)%F{242}@%m%f'
+}
+
+@test 'connection info is only shown for root when local' {
+  unset SSH_CONNECTION
+
+  run prompt_filthy_connection_info
+
+  assert "$output" same_as '%(!.%B%F{red}%n%f%b%F{242}@%m%f .)'
+}
+
+@test 'prompt char changes in vicmd mode' {
+  KEYMAP=vicmd
+  run prompt_filthy_prompt_char
+  assert "$output" contains '●'
+
+  KEYMAP=main
+  run prompt_filthy_prompt_char
+  assert "$output" contains '❯'
+}
+
+@test 'prompt chars can be overridden' {
+  PROMPT_FILTHY_PROMPT_CHAR='>'
+  PROMPT_FILTHY_VICMD_CHAR='<'
+
+  KEYMAP=main
+  run prompt_filthy_prompt_char
+  assert "$output" contains '>'
+
+  KEYMAP=vicmd
+  run prompt_filthy_prompt_char
+  assert "$output" contains '<'
+}
+
+@test 'no versions are shown by default' {
+  run prompt_filthy_versions
+
+  assert "$output" is_empty
+}
+
+@test 'only the requested versions are shown' {
+  print '#!/bin/sh\necho v20.0.0' > "$_tmp/bin/node"
+  chmod +x "$_tmp/bin/node"
+
+  FILTHY_SHOW_VERSIONS='node zsh'
+  run prompt_filthy_versions
+
+  assert "$output" contains 'v20.0.0'
+  assert "$output" contains "ZSH %F{yellow}${ZSH_VERSION}"
+}
+
+@test 'unknown version names are ignored' {
+  FILTHY_SHOW_VERSIONS='banana'
+  run prompt_filthy_versions
+
+  assert "$output" is_empty
+}
+
+# ------------------------------------------------------------------
+# Git branch
+# ------------------------------------------------------------------
+
+@test 'the current branch is shown' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+
+  run prompt_filthy_git_branch
+
+  assert "$output" same_as '%F{242}main%f'
+}
+
+@test 'percent signs in branch names are escaped' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+  git checkout -q -b '100%done'
+
+  run prompt_filthy_git_branch
+
+  assert "$output" contains '100%%done'
+}
+
+@test 'a detached HEAD is shown with its commit' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+  git commit -q --allow-empty -m 'second'
+  git checkout -q --detach HEAD
+
+  run prompt_filthy_git_branch
+
+  assert "$output" contains 'detached@'
+  assert "$output" contains "$(git rev-parse --short HEAD)"
+}
+
+@test 'a merge in progress is shown' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  print 'base' > file
+  git add file
+  git commit -q -m 'base'
+  git checkout -q -b side
+  print 'side' > file
+  git commit -q -am 'side'
+  git checkout -q main
+  print 'main' > file
+  git commit -q -am 'main'
+  git merge side >/dev/null 2>&1 || true
+
+  run prompt_filthy_git_branch
+
+  assert "$output" contains 'merging'
+  assert "$output" contains 'main'
+}
+
+# ------------------------------------------------------------------
+# Git repo status
+# ------------------------------------------------------------------
+
+@test 'a clean repository has no status markers' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+
+  run prompt_filthy_git_repo_status
+
+  assert "$output" is_empty
+}
+
+@test 'unstaged changes are marked' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  print 'one' > file
+  git add file
+  git commit -q -m 'first'
+  print 'two' > file
+
+  run prompt_filthy_git_repo_status
+
+  assert "$output" contains '…'
+}
+
+@test 'staged changes are marked' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  print 'one' > file
+  git add file
+  git commit -q -m 'first'
+  print 'two' > file
+  git add file
+
+  run prompt_filthy_git_repo_status
+
+  assert "$output" contains '*'
+}
+
+@test 'stashes are marked' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  print 'one' > file
+  git add file
+  git commit -q -m 'first'
+  print 'two' > file
+  git stash -q
+
+  run prompt_filthy_git_repo_status
+
+  assert "$output" contains '≡'
+}
+
+@test 'commits to push and pull are counted' {
+  cd "$_tmp"
+  git init -q -b main remote
+  cd remote
+  git commit -q --allow-empty -m 'first'
+
+  cd "$_tmp"
+  git clone -q remote local
+
+  cd remote
+  git commit -q --allow-empty -m 'second'
+
+  cd "$_tmp/local"
+  git fetch -q
+  git commit -q --allow-empty -m 'mine'
+
+  run prompt_filthy_git_repo_status
+
+  assert "$output" contains '⇡1'
+  assert "$output" contains '⇣1'
+}
+
+@test 'push and pull counts survive a non-default IFS' {
+  cd "$_tmp"
+  git init -q -b main remote
+  cd remote
+  git commit -q --allow-empty -m 'first'
+
+  cd "$_tmp"
+  git clone -q remote local
+  cd local
+  git commit -q --allow-empty -m 'mine'
+
+  local IFS=$'\n'
+  run prompt_filthy_git_repo_status
+
+  assert "$output" contains '⇡1'
+  assert "$output" does_not_contain 'bad math expression'
+}
+
+# ------------------------------------------------------------------
+# CI status
+# ------------------------------------------------------------------
+
+@test 'CI status is disabled by default' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+
+  run prompt_filthy_ci_status
+
+  assert "$output" is_empty
+}
+
+@test 'a fresh CI status is read from the cache without calling hub' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+
+  print '#!/bin/sh\necho called >> "$_tmp/hub.log"\necho success' > "$_tmp/bin/hub"
+  chmod +x "$_tmp/bin/hub"
+
+  local key="$(prompt_filthy_path_key ${$(command git rev-parse --git-common-dir):A})"
+  print '%F{green}●%f' > "$TMPDIR/filthy-ci-status-$key"
+
+  FILTHY_SHOW_CI_STATUS=1
+  FILTHY_CI_STATUS_INTERVAL=600
+  run prompt_filthy_ci_status
+
+  assert "$output" contains '%F{green}●%f'
+  assert "$(cat "$_tmp/hub.log" 2>/dev/null)" is_empty
+}
+
+@test 'a stale CI status claims the slot before refreshing' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+
+  print '#!/bin/sh\nsleep 5\necho success' > "$_tmp/bin/hub"
+  chmod +x "$_tmp/bin/hub"
+
+  local key="$(prompt_filthy_path_key ${$(command git rev-parse --git-common-dir):A})"
+  local state_file="$TMPDIR/filthy-ci-status-$key"
+  print '%F{yellow}○%f' > "$state_file"
+  touch -t 200001010000 "$state_file"
+
+  FILTHY_SHOW_CI_STATUS=1
+  FILTHY_CI_STATUS_INTERVAL=30
+  run prompt_filthy_ci_status
+
+  # The cached value is still what gets rendered, but the slot has been
+  # claimed by touching the file, so a second render won't spawn another hub
+  local -a stat_result
+  zstat -A stat_result +mtime "$state_file"
+  assert "$(( EPOCHSECONDS - stat_result[1] ))" is_less_than 5
+  assert "$output" contains '○'
+}
+
+# ------------------------------------------------------------------
+# Fetching
+# ------------------------------------------------------------------
+
+@test 'fetching can be turned off' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+
+  FILTHY_FETCH_INTERVAL=0
+
+  # Called directly rather than through `run`, which would throw away the
+  # global state we're asserting on along with its subshell
+  prompt_filthy_maybe_fetch || true
+
+  assert "${#__filthy_last_fetch}" equals 0
+}
+
+@test 'a recent fetch is not repeated' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+
+  local key="${$(command git rev-parse --git-common-dir):A}"
+  local -i recent=$(( EPOCHSECONDS - 5 ))
+  __filthy_last_fetch[$key]=$recent
+  FILTHY_FETCH_INTERVAL=180
+
+  prompt_filthy_maybe_fetch || true
+
+  assert "${__filthy_last_fetch[$key]}" equals "$recent"
+}
+
+@test 'a stale fetch is refreshed' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+
+  local key="${$(command git rev-parse --git-common-dir):A}"
+  __filthy_last_fetch[$key]=$(( EPOCHSECONDS - 1000 ))
+  FILTHY_FETCH_INTERVAL=180
+
+  prompt_filthy_maybe_fetch || true
+
+  assert "$(( EPOCHSECONDS - ${__filthy_last_fetch[$key]} ))" is_less_than 5
+}
+
+@test 'fetching is skipped outside a repository' {
+  cd "$_tmp"
+
+  prompt_filthy_maybe_fetch || true
+
+  assert "${#__filthy_last_fetch}" equals 0
+}
+
+# ------------------------------------------------------------------
+# Async rendering
+# ------------------------------------------------------------------
+
+@test 'a second render is queued rather than piling up workers' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+
+  # Called directly rather than through `run`, which would throw away the
+  # global state we're asserting on along with its subshell
+  prompt_filthy_async_start || true
+  local first="$__filthy_async_fd"
+
+  assert "$first" is_greater_than 2
+  assert "$__filthy_async_pending" equals '0'
+
+  # A worker is already in flight, so this one is noted for later instead of
+  # opening a second descriptor
+  prompt_filthy_async_start || true
+
+  assert "$__filthy_async_fd" equals "$first"
+  assert "$__filthy_async_pending" equals '1'
+}
+
+@test 'the async callback stores the rendered prompt' {
+  local fd
+  exec {fd}< <(print -r -- '%F{242}main%f')
+
+  prompt_filthy_async_callback $fd
+
+  assert "$__filthy_rprompt" same_as '%F{242}main%f'
+  assert "$__filthy_async_fd" equals '-1'
+}
+
+@test 'the async callback keeps the last prompt when the worker dies' {
+  __filthy_rprompt='previous'
+
+  local fd
+  exec {fd}< <(true)
+
+  prompt_filthy_async_callback $fd
+
+  assert "$__filthy_rprompt" same_as 'previous'
+}
+
+@test 'the right prompt is rendered as a single line' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+
+  run prompt_filthy_rprompt
+
+  assert "${#lines}" equals 1
+  assert "$output" contains 'main'
+}
+
+@test 'the right prompt is empty outside a repository' {
+  cd "$_tmp"
+
+  run prompt_filthy_rprompt
+
+  assert "$output" is_empty
+}
+
+# ------------------------------------------------------------------
+# Live git updates
+# ------------------------------------------------------------------
+
+@test 'live updates can be turned off' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+
+  FILTHY_LIVE_GIT_OFF=1
+  prompt_filthy_live_git_check_pwd
+
+  assert "$__filthy_live_git_events_fd" equals '-1'
+  assert "$__filthy_live_git_supervisor_fd" equals '-1'
+}
+
+@test 'no watcher is started outside a repository' {
+  cd "$_tmp"
+
+  prompt_filthy_live_git_check_pwd
+
+  assert "$__filthy_live_git_events_fd" equals '-1'
+  assert "$__filthy_live_git_root" is_empty
+}
+
+@test 'shutting down the watcher is idempotent' {
+  __filthy_live_git_root='/somewhere'
+
+  prompt_filthy_live_git_shutdown
+  prompt_filthy_live_git_shutdown
+
+  assert "$__filthy_live_git_root" is_empty
+  assert "$__filthy_live_git_events_fd" equals '-1'
+  assert "$__filthy_live_git_supervisor_fd" equals '-1'
+}
+
+# ------------------------------------------------------------------
+# The pre-prompt
+# ------------------------------------------------------------------
+
+@test 'the preprompt shows the repository name and relative path' {
+  cd "$_tmp"
+  git init -q -b main repo
+  cd repo
+  git commit -q --allow-empty -m 'first'
+  mkdir -p src/lib
+  cd src/lib
+
+  FILTHY_FETCH_INTERVAL=0
+  run prompt_filthy_precmd
+
+  assert "$output" contains 'repo'
+  assert "$output" contains 'src/lib'
+}
+
+@test 'the preprompt shows the working directory outside a repository' {
+  mkdir -p "$_tmp/elsewhere"
+  cd "$_tmp/elsewhere"
+
+  FILTHY_FETCH_INTERVAL=0
+  run prompt_filthy_precmd
+
+  assert "$output" contains 'elsewhere'
+}
+
+@test 'the preprompt shows stored messages once' {
+  mkdir -p "$_tmp/elsewhere"
+  cd "$_tmp/elsewhere"
+  print 'a stored message' > "$ZDOTDIR/.promptmsg"
+
+  FILTHY_FETCH_INTERVAL=0
+  run prompt_filthy_precmd
+  assert "$output" contains 'a stored message'
+
+  run prompt_filthy_precmd
+  assert "$output" does_not_contain 'a stored message'
+}

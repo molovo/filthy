@@ -1,0 +1,33 @@
+name: tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  zunit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install zsh and fswatch
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y zsh fswatch
+
+      - name: Install ZUnit
+        run: |
+          mkdir -p .bin
+          curl -fsSL -o .bin/zunit \
+            https://github.com/zunit-zsh/zunit/releases/download/v0.8.2/zunit
+          curl -fsSL -o .bin/revolver \
+            https://raw.githubusercontent.com/molovo/revolver/master/revolver
+          curl -fsSL -o .bin/color \
+            https://raw.githubusercontent.com/molovo/color/master/color.zsh
+          chmod u+x .bin/zunit .bin/revolver .bin/color
+          echo "$PWD/.bin" >> $GITHUB_PATH
+
+      - name: Run tests
+        run: zunit filthy.zunit --tap
