@@ -41,6 +41,29 @@ fi
 # so that throttling a fetch can't itself write inside .git.
 typeset -gA __filthy_last_fetch
 
+# Every git call the prompt makes is read only, but git still refreshes the
+# index opportunistically, and that takes .git/index.lock. A rebase writes to
+# .git constantly, so the file watcher fires mid-rebase and the two race for the
+# lock, which aborts the rebase. GIT_OPTIONAL_LOCKS=0 tells git to skip anything
+# needing a lock; the tradeoff is that a stat-dirty file may briefly read as
+# modified, which is the right way round.
+prompt_filthy_git() {
+  GIT_OPTIONAL_LOCKS=0 command git "$@"
+}
+
+# True while a rebase, merge, cherry-pick, revert or bisect is in progress
+prompt_filthy_git_in_progress() {
+  local git_dir=$1
+
+  [[ -d "${git_dir}/rebase-merge" || -d "${git_dir}/rebase-apply" ]] && return 0
+  [[ -f "${git_dir}/MERGE_HEAD" ]] && return 0
+  [[ -f "${git_dir}/CHERRY_PICK_HEAD" ]] && return 0
+  [[ -f "${git_dir}/REVERT_HEAD" ]] && return 0
+  [[ -f "${git_dir}/BISECT_LOG" ]] && return 0
+
+  return 1
+}
+
 prompt_filthy_nice_exit_code() {
   local exit_status="${1:-$(print -P %?)}";
   # nothing to do here
@@ -131,13 +154,13 @@ prompt_filthy_precmd() {
   prompt_filthy_preprompt+="$(prompt_filthy_connection_info)"
 
   # check if we're in a git repo, and show git info if we are
-  if [[ FILTHY_ALWAYS_SHOW_FULL_PATH -ne 1 ]] && command git rev-parse --is-inside-work-tree &>/dev/null; then
+  if [[ FILTHY_ALWAYS_SHOW_FULL_PATH -ne 1 ]] && prompt_filthy_git rev-parse --is-inside-work-tree &>/dev/null; then
     # Print the name of the repository
-    git_root=$(git rev-parse --show-toplevel)
+    git_root=$(prompt_filthy_git rev-parse --show-toplevel)
     prompt_filthy_preprompt+="%B%F{yellow}$(basename ${git_root})%b%f"
 
     # Print the current_path relative to the git root
-    current_path=$(git rev-parse --show-prefix)
+    current_path=$(prompt_filthy_git rev-parse --show-prefix)
     prompt_filthy_preprompt+=" %F{blue}${${current_path%/}:-"/"}%f"
   else
     # We're not in a repository, so just print the current path
@@ -224,7 +247,7 @@ prompt_filthy_rprompt() {
   local branch repo_status ci_status rtn
 
   # check if we're in a git repo, and show git info if we are
-  if command git rev-parse --is-inside-work-tree &>/dev/null; then
+  if prompt_filthy_git rev-parse --is-inside-work-tree &>/dev/null; then
     # Print the repository status
     branch=$(prompt_filthy_git_branch)
     repo_status=$(prompt_filthy_git_repo_status)
@@ -258,7 +281,7 @@ prompt_filthy_ci_status() {
 
   builtin type hub >/dev/null 2>&1 || return
 
-  git_dir_local="$(command git rev-parse --git-common-dir 2>/dev/null)" || return
+  git_dir_local="$(prompt_filthy_git rev-parse --git-common-dir 2>/dev/null)" || return
   [[ -z $git_dir_local ]] && return
   git_dir_local=${git_dir_local:A}
 
@@ -271,7 +294,7 @@ prompt_filthy_ci_status() {
     # will be empty when we read it
     sleep 1
 
-    state=$(hub ci-status 2>&1)
+    state=$(GIT_OPTIONAL_LOCKS=0 hub ci-status 2>&1)
     cat /dev/null >! "${state_file}.new" 2>/dev/null
     case $state in
       success )
@@ -323,20 +346,20 @@ prompt_filthy_git_repo_status() {
   local dirty
   local staged
 
-  stashes="$(git stash list 2>/dev/null)"
+  stashes="$(prompt_filthy_git stash list 2>/dev/null)"
   [[ $stashes != "" ]] && rtn+=" %F{yellow}≡%f"
 
-  dirty="$(git diff --ignore-submodules=all HEAD 2>/dev/null)"
+  dirty="$(prompt_filthy_git diff --ignore-submodules=all HEAD 2>/dev/null)"
   [[ $dirty != "" ]] && rtn+=" %F{242}…%f"
 
-  staged="$(git diff --staged HEAD 2>/dev/null)"
+  staged="$(prompt_filthy_git diff --staged HEAD 2>/dev/null)"
   [[ $staged != "" ]] && rtn+=" %F{242}*%f"
 
   # check if there is an upstream configured for this branch
   # exit if there isn't, as we can't check for remote changes
-  if command git rev-parse --abbrev-ref @'{u}' &>/dev/null; then
+  if prompt_filthy_git rev-parse --abbrev-ref @'{u}' &>/dev/null; then
     # if there is, check git left and right arrow_status
-    count="$(command git rev-list --left-right --count HEAD...@'{u}' 2>/dev/null)"
+    count="$(prompt_filthy_git rev-list --left-right --count HEAD...@'{u}' 2>/dev/null)"
 
     # Get the push and pull counts. git separates them with a tab, so split on
     # whitespace whatever the caller's $IFS is; a `(w)` subscript would use
@@ -363,24 +386,24 @@ prompt_filthy_git_branch() {
   # get the current git status
   local branch git_dir_local rtn
 
-  branch=$(git status --short --branch -uno --ignore-submodules=all | head -1 | awk '{print $2}' 2>/dev/null)
-  git_dir_local=$(git rev-parse --git-dir)
+  branch=$(prompt_filthy_git status --short --branch -uno --ignore-submodules=all | head -1 | awk '{print $2}' 2>/dev/null)
+  git_dir_local=$(prompt_filthy_git rev-parse --git-dir)
 
   # remove reference to any remote tracking branch
   branch=${branch%...*}
 
   # check if HEAD is detached
   if [[ -d "${git_dir_local}/rebase-merge" ]]; then
-    branch=${${$(git status | head -5 | tail -1 | awk '{print $6}')//([[:space:]]|\')/}//\%/%%}
+    branch=${${$(prompt_filthy_git status | head -5 | tail -1 | awk '{print $6}')//([[:space:]]|\')/}//\%/%%}
     rtn="%F{red}rebasing interactively%f%F{242} → ${branch}%f"
   elif [[ -d "${git_dir_local}/rebase-apply" ]]; then
-    branch=${${$(git status | head -2 | tail -1 | awk '{print $6}')//([[:space:]]|\')/}//\%/%%}
+    branch=${${$(prompt_filthy_git status | head -2 | tail -1 | awk '{print $6}')//([[:space:]]|\')/}//\%/%%}
     rtn="%F{red}rebasing%f%F{242} → ${branch}%f"
   elif [[ -f "${git_dir_local}/MERGE_HEAD" ]]; then
-    branch=${${$(git status | head -1 | awk '{print $3}')//([[:space:]]|\')/}//\%/%%}
+    branch=${${$(prompt_filthy_git status | head -1 | awk '{print $3}')//([[:space:]]|\')/}//\%/%%}
     rtn="%F{red}merging%f%F{242} → ${branch}%f"
   elif [[ "$branch" = "HEAD" ]]; then
-    commit=$(git status HEAD -uno --ignore-submodules=all | head -1 | awk '{print $4}' 2>/dev/null)
+    commit=$(prompt_filthy_git status HEAD -uno --ignore-submodules=all | head -1 | awk '{print $4}' 2>/dev/null)
 
     if [[ "$commit" = "on" ]]; then
       rtn="%F{yellow}no branch%f"
@@ -421,14 +444,17 @@ prompt_filthy_maybe_fetch() {
   interval=${FILTHY_FETCH_INTERVAL:-180}
   (( interval <= 0 )) && return
 
-  key="$(command git rev-parse --git-common-dir 2>/dev/null)" || return
+  key="$(prompt_filthy_git rev-parse --git-common-dir 2>/dev/null)" || return
   [[ -z $key ]] && return
   key=${key:A}
+
+  # Don't touch the repository mid rebase, merge or bisect
+  prompt_filthy_git_in_progress "$key" && return
 
   (( EPOCHSECONDS - ${__filthy_last_fetch[$key]:-0} < interval )) && return
 
   __filthy_last_fetch[$key]=$EPOCHSECONDS
-  command git fetch >/dev/null 2>&1 &!
+  prompt_filthy_git fetch >/dev/null 2>&1 &!
 }
 
 # Render the right hand prompt in a background worker. The result arrives on a
@@ -679,7 +705,7 @@ prompt_filthy_live_git_check_pwd() {
   fi
 
   local -a git_dirs
-  git_dirs=("${(@f)$(command git rev-parse \
+  git_dirs=("${(@f)$(prompt_filthy_git rev-parse \
     --show-toplevel \
     --git-dir \
     --git-common-dir \
